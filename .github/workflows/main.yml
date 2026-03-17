@@ -1,0 +1,22 @@
+name: Download Docker Image
+on: [workflow_dispatch] # 手动触发开关
+
+jobs:
+  download-and-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull and Save Image
+        run: |
+          # 拉取你需要的镜像
+          docker pull ghcr.io/openclaw/openclaw:latest
+          # 导出为 tar 文件
+          docker save ghcr.io/openclaw/openclaw:latest -o openclaw_latest.tar
+          # 压缩一下，减少网页下载体积
+          gzip openclaw_latest.tar
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-tar-gz
+          path: openclaw_latest.tar.gz
+          retention-days: 1 # 下载完就失效，保护隐私
