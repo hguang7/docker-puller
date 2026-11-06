@@ -8,15 +8,15 @@ jobs:
       - name: Pull and Save Image
         run: |
           # 拉取你需要的镜像
-          docker pull ghcr.io/openclaw/openclaw:latest
+          docker pull bitnami/php-fpm:8.4.27
           # 导出为 tar 文件
-          docker save ghcr.io/openclaw/openclaw:latest -o openclaw_latest.tar
+          docker save bitnami/php-fpm:8.4.27 -o php-fpm_8.4.27.tar
           # 压缩一下，减少网页下载体积
-          gzip openclaw_latest.tar
+          gzip php-fpm_8.4.27.tar
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openclaw-tar-gz
-          path: openclaw_latest.tar.gz
+          name: php-fpm_8.4.27-tar-gz
+          path: php-fpm_8.4.27.tar.gz
           retention-days: 1 # 下载完就失效，保护隐私
