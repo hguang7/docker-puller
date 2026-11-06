@@ -1,22 +1,37 @@
-name: Download Docker Image
-on: [workflow_dispatch] # 手动触发开关
+
+name: Download PHP 8.4.27 FPM Image
+
+on:
+  workflow_dispatch:
 
 jobs:
   download-and-pack:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Pull and Save Image
+      - name: Pull and Verify Image
         run: |
-          # 拉取你需要的镜像
-          docker pull bitnami/php-fpm:8.4.27
-          # 导出为 tar 文件
-          docker save bitnami/php-fpm:8.4.27 -o php-fpm_8.4.27.tar
-          # 压缩一下，减少网页下载体积
-          gzip php-fpm_8.4.27.tar
+          set -euo pipefail
+
+          IMAGE="php:8.4.27-fpm-bookworm"
+
+          docker pull --platform linux/amd64 "$IMAGE"
+
+          docker run --rm \
+            --platform linux/amd64 \
+            "$IMAGE" php -v
+
+      - name: Save and Compress Image
+        run: |
+          docker save php:8.4.27-fpm-bookworm \
+            | gzip -1 > php-fpm_8.4.27_amd64.tar.gz
+
+          ls -lh php-fpm_8.4.27_amd64.tar.gz
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: php-fpm_8.4.27-tar-gz
-          path: php-fpm_8.4.27.tar.gz
-          retention-days: 1 # 下载完就失效，保护隐私
+          name: php-fpm-8.4.27-amd64
+          path: php-fpm_8.4.27_amd64.tar.gz
+          retention-days: 1
+          if-no-files-found: error
