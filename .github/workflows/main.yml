@@ -1,37 +1,73 @@
-
-name: Download PHP 8.4.27 FPM Image
+name: Build qczdy PHP-FPM 8.4.27
 
 on:
   workflow_dispatch:
 
-jobs:
-  download-and-pack:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
+jobs:
+  build-test-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      IMAGE: qczdy-php-fpm:8.4.27-r1
+      ARCHIVE: qczdy-php-fpm_8.4.27-r1_amd64.tar.gz
     steps:
-      - name: Pull and Verify Image
+      - name: Checkout build files
+        uses: actions/checkout@v4
+
+      - name: Build custom PHP-FPM image
         run: |
           set -euo pipefail
-
-          IMAGE="php:8.4.27-fpm-bookworm"
-
-          docker pull --platform linux/amd64 "$IMAGE"
-
-          docker run --rm \
+          docker build --pull \
             --platform linux/amd64 \
-            "$IMAGE" php -v
+            --progress=plain \
+            -f Dockerfile -t "$IMAGE" .
+          test "$(docker image inspect "$IMAGE" --format '{{.Architecture}}')" = amd64
 
-      - name: Save and Compress Image
+      - name: Validate modules and original Kubernetes ConfigMap
         run: |
-          docker save php:8.4.27-fpm-bookworm \
-            | gzip -1 > php-fpm_8.4.27_amd64.tar.gz
+          set -euo pipefail
+          docker run --rm --platform linux/amd64 \
+            -v "$PWD/verify-php.sh:/verify-php.sh:ro" \
+            -v "$PWD/php-m-baseline.txt:/php-m-baseline.txt:ro" \
+            -v "$PWD/config/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro" \
+            -v "$PWD/config/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro" \
+            --entrypoint sh "$IMAGE" /verify-php.sh
 
-          ls -lh php-fpm_8.4.27_amd64.tar.gz
+      - name: Smoke-test the PHP-FPM process
+        run: |
+          set -euo pipefail
+          C=qczdy-php-fpm-smoke
+          trap 'docker rm -f "$C" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$C" --platform linux/amd64 \
+            -v "$PWD/config/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro" \
+            -v "$PWD/config/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro" \
+            "$IMAGE"
+          sleep 4
+          test "$(docker inspect -f '{{.State.Running}}' "$C")" = true || {
+            docker logs "$C"; exit 1;
+          }
+          docker exec "$C" php-fpm -tt
+          docker logs "$C"
 
-      - name: Upload Artifact
+      - name: Save verified Docker image
+        run: |
+          set -euo pipefail
+          docker image inspect "$IMAGE" --format 'Image={{.RepoTags}} Id={{.Id}} OS={{.Os}} Arch={{.Architecture}}' \
+            > image-details.txt
+          docker save "$IMAGE" | gzip -1 > "$ARCHIVE"
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          ls -lh "$ARCHIVE" "$ARCHIVE.sha256"
+
+      - name: Upload compressed image and SHA256
         uses: actions/upload-artifact@v4
         with:
-          name: php-fpm-8.4.27-amd64
-          path: php-fpm_8.4.27_amd64.tar.gz
-          retention-days: 1
+          name: qczdy-php-fpm-8.4.27-r1-amd64
+          path: |
+            qczdy-php-fpm_8.4.27-r1_amd64.tar.gz
+            qczdy-php-fpm_8.4.27-r1_amd64.tar.gz.sha256
+            image-details.txt
           if-no-files-found: error
+          retention-days: 1
