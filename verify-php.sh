@@ -56,7 +56,6 @@ $expected = [
     "memory_limit" => "5120M",
     "upload_max_filesize" => "1536M",
     "post_max_size" => "2048M",
-    "max_execution_time" => "3600",
     "output_buffering" => "0",
     "error_log" => "/var/www/html/logs/php_error.log",
 ];
@@ -68,6 +67,26 @@ foreach ($expected as $key => $value) {
     }
     echo "$key=$actual\n";
 }
+'
+
+# CLI intentionally defaults max_execution_time to 0 even if php.ini sets
+# it to 3600. Validate the mounted ConfigMap value instead of CLI ini_get().
+# PHP-FPM startup/config checks below and in the next workflow step remain required.
+echo '===== ConfigMap max_execution_time (not CLI runtime value) ====='
+php -r '
+$path = "/usr/local/etc/php/conf.d/99-custom.ini";
+$files = php_ini_scanned_files();
+if ($files === false || strpos($files, $path) === false) {
+    fwrite(STDERR, "Mounted $path is not among loaded ini files\n");
+    exit(1);
+}
+$settings = parse_ini_file($path, false, INI_SCANNER_RAW);
+$actual = is_array($settings) ? ($settings["max_execution_time"] ?? null) : null;
+if ((string)$actual !== "3600") {
+    fwrite(STDERR, "max_execution_time: expected configured 3600, got " . var_export($actual, true) . "\n");
+    exit(1);
+}
+echo "max_execution_time=3600 (ConfigMap; CLI may show 0)\n";
 '
 
 echo '===== PHP-FPM config / daemon user ====='
